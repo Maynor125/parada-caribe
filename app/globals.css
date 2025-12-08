@@ -1,0 +1,132 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Caribbean wood color palette for Parada Caribe */
+  --background: #fff8dc;
+  --foreground: #3d2817;
+  --card: #f5e6d3;
+  --card-foreground: #3d2817;
+  --popover: #fff8dc;
+  --popover-foreground: #3d2817;
+  --primary: #8b6f47;
+  --primary-dark: #6b5635;
+  --primary-foreground: #fff8dc;
+  --secondary: #d2b48c;
+  --secondary-foreground: #3d2817;
+  --muted: #e8d4b8;
+  --muted-foreground: #5c4033;
+  --accent: #c19a6b;
+  --accent-foreground: #fff8dc;
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --border: #d2b48c;
+  --input: #f5e6d3;
+  --ring: #8b6f47;
+  --chart-1: #8b6f47;
+  --chart-2: #a0826d;
+  --chart-3: #c19a6b;
+  --chart-4: #d2b48c;
+  --chart-5: #e8d4b8;
+  --radius: 0.75rem;
+  --surface: #f5e6d3;
+  --sidebar: #fff8dc;
+  --sidebar-foreground: #3d2817;
+  --sidebar-primary: #8b6f47;
+  --sidebar-primary-foreground: #fff8dc;
+  --sidebar-accent: #d2b48c;
+  --sidebar-accent-foreground: #3d2817;
+  --sidebar-border: #d2b48c;
+  --sidebar-ring: #8b6f47;
+}
+
+.dark {
+  --background: #2a1f17;
+  --foreground: #fff8dc;
+  --card: #3d2817;
+  --card-foreground: #fff8dc;
+  --popover: #2a1f17;
+  --popover-foreground: #fff8dc;
+  --primary: #c19a6b;
+  --primary-dark: #a0826d;
+  --primary-foreground: #2a1f17;
+  --secondary: #8b6f47;
+  --secondary-foreground: #fff8dc;
+  --muted: #5c4033;
+  --muted-foreground: #d2b48c;
+  --accent: #d2b48c;
+  --accent-foreground: #2a1f17;
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.637 0.237 25.331);
+  --border: #5c4033;
+  --input: #3d2817;
+  --ring: #c19a6b;
+  --chart-1: #c19a6b;
+  --chart-2: #a0826d;
+  --chart-3: #8b6f47;
+  --chart-4: #6b5635;
+  --chart-5: #5c4033;
+  --surface: #3d2817;
+  --sidebar: #2a1f17;
+  --sidebar-foreground: #fff8dc;
+  --sidebar-primary: #c19a6b;
+  --sidebar-primary-foreground: #2a1f17;
+  --sidebar-accent: #8b6f47;
+  --sidebar-accent-foreground: #fff8dc;
+  --sidebar-border: #5c4033;
+  --sidebar-ring: #c19a6b;
+}
+
+@theme inline {
+  --font-sans: "Geist", "Geist Fallback";
+  --font-mono: "Geist Mono", "Geist Mono Fallback";
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-surface: var(--surface);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
