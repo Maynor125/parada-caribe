@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@supabase/supabase-js"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
 import CategoryTabs from "@/components/category-tabs"
 import ProductList from "@/components/product-list"
 import OrderSummary from "@/components/order-summary"
@@ -10,16 +12,18 @@ import type { Product, OrderItem } from "@/types"
 export default function Page() {
   const [loading, setLoading] = useState(true)
   const [products, setProducts] = useState<Product[]>([])
-  const [activeCategory, setActiveCategory] = useState("Comida")
+  const [categories, setCategories] = useState<string[]>([])
+  const [activeCategory, setActiveCategory] = useState<string>("")
   const [error, setError] = useState<string | null>(null)
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
 
-  const fetchProducts = async () => {
+  const [cashBoxOpen, setCashBoxOpen] = useState(false)
+  const [currentSession, setCurrentSession] = useState<any>(null)
+  const [supabaseClient, setSupabaseClient] = useState<any>(null)
+
+  const fetchData = async () => {
     try {
       setLoading(true)
-
-      console.log("[v0] URL:", process.env.NEXT_PUBLIC_SUPABASE_URL)
-      console.log("[v0] Key exists:", !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
 
       if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
         throw new Error(
@@ -28,61 +32,74 @@ export default function Page() {
       }
 
       const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-      console.log("[v0] Supabase client created successfully")
+      setSupabaseClient(supabase)
 
-      console.log("[v0] Fetching products...")
-      const { data, error: queryError } = await supabase
-        .from("products")
-        .select("id, name, price, category_id, categories(name)")
-        .order("category_id")
-        .order("name")
+      // Check for existing cash sessions if table exists
+      try {
+        const { data: sessions } = await supabase
+          .from("cash_sessions")
+          .select("*")
+          .is("closed_at", null)
+          .order("opened_at", { ascending: false })
+          .limit(1)
 
-      console.log("[v0] Query error:", queryError)
-      console.log("[v0] Data received:", data)
-
-      if (queryError) {
-        console.error("[v0] Query error details:", queryError)
-        throw queryError
+        if (sessions && sessions.length > 0) {
+          setCurrentSession(sessions[0])
+          setCashBoxOpen(true)
+        }
+      } catch (e) {
+        // cash_sessions table doesn't exist yet, that's okay
+        console.log("[v0] Cash sessions table not ready yet")
       }
 
-      if (!data || data.length === 0) {
-        console.warn("[v0] No products found in database")
+      const { data: productsData, error: productsError } = await supabase.from("products").select("*")
+
+      if (productsError) {
+        throw productsError
+      }
+
+      if (!productsData || productsData.length === 0) {
         setProducts([])
+        setCategories([])
         return
       }
 
-      const transformedData = data.map((product: any) => ({
+      const sortedData = productsData.sort((a: any, b: any) => {
+        if (a.category !== b.category) {
+          return a.category.localeCompare(b.category)
+        }
+        return a.name.localeCompare(b.name)
+      })
+
+      const transformedData = sortedData.map((product: any) => ({
         id: product.id,
         name: product.name,
         price: product.price,
-        category_id: product.category_id,
-        category: product.categories?.name || "Otros",
+        category: product.category || "Sin categoría",
       }))
 
-      console.log("[v0] First product:", transformedData[0])
       setProducts(transformedData)
-      if (transformedData && transformedData.length > 0) {
-        setActiveCategory(transformedData[0].category || "Comida")
+
+      const uniqueCategories = Array.from(new Set(transformedData.map((p) => p.category))).sort()
+
+      setCategories(uniqueCategories)
+      if (uniqueCategories.length > 0) {
+        setActiveCategory(uniqueCategories[0])
       }
     } catch (err) {
-      console.error("[v0] Error loading products:", err)
-      setError(err instanceof Error ? err.message : JSON.stringify(err))
+      console.error("[v0] Error loading data:", err)
+      setError(err instanceof Error ? err.message : "Error al cargar datos")
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchProducts()
+    fetchData()
   }, [])
 
-  // Get unique categories from products
-  const categories = Array.from(new Set(products.map((p) => p.category)))
-
-  // Filter products by active category
   const filteredProducts = products.filter((p) => p.category === activeCategory)
 
-  // Handle adding product to order
   const handleAddProduct = (product: Product) => {
     const existingItem = orderItems.find((item) => item.product_id === product.id)
 
@@ -104,7 +121,6 @@ export default function Page() {
     }
   }
 
-  // Handle updating quantity
   const handleUpdateQuantity = (itemId: string, quantity: number) => {
     if (quantity < 1) {
       handleRemoveItem(itemId)
@@ -113,19 +129,69 @@ export default function Page() {
     setOrderItems(orderItems.map((item) => (item.id === itemId ? { ...item, quantity } : item)))
   }
 
-  // Handle removing item
   const handleRemoveItem = (itemId: string) => {
     setOrderItems(orderItems.filter((item) => item.id !== itemId))
   }
 
-  // Handle clearing order
   const handleClearOrder = () => {
     setOrderItems([])
   }
 
-  // Handle printing
-  const handlePrint = () => {
+  const saveOrderToDatabase = async (items: OrderItem[], total: number) => {
+    if (!supabaseClient || !currentSession) return
+
+    try {
+      // Insert order
+      const { data: orderData, error: orderError } = await supabaseClient
+        .from("orders")
+        .insert([
+          {
+            cash_session_id: currentSession.id,
+            items: items.map((item) => ({
+              product_id: item.product_id,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              price: item.price,
+            })),
+            total: total,
+          },
+        ])
+        .select()
+
+      if (orderError) throw orderError
+
+      // Update session totals
+      const updatedTotalOrders = (currentSession.total_orders || 0) + 1
+      const updatedTotalSales = (currentSession.total_sales || 0) + total
+
+      const { error: updateError } = await supabaseClient
+        .from("cash_sessions")
+        .update({
+          total_orders: updatedTotalOrders,
+          total_sales: updatedTotalSales,
+        })
+        .eq("id", currentSession.id)
+
+      if (updateError) throw updateError
+
+      // Update local session state
+      setCurrentSession({
+        ...currentSession,
+        total_orders: updatedTotalOrders,
+        total_sales: updatedTotalSales,
+      })
+
+      console.log("[v0] Orden guardada:", orderData)
+    } catch (err) {
+      console.error("[v0] Error saving order:", err)
+    }
+  }
+
+  const handlePrint = async () => {
     const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
+    await saveOrderToDatabase(orderItems, total)
+
     const itemsHTML = orderItems
       .map(
         (item) =>
@@ -272,6 +338,7 @@ export default function Page() {
       printWindow.document.close()
       setTimeout(() => {
         printWindow.print()
+        handleClearOrder()
       }, 250)
     }
   }
@@ -303,46 +370,62 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl md:text-5xl font-bold text-primary mb-2">🏝️ PARADA CARIBE</h1>
-          <p className="text-lg text-muted-foreground">Sistema de Pedidos</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl md:text-5xl font-bold text-primary mb-2">🏝️ PARADA CARIBE</h1>
+            <p className="text-lg text-muted-foreground">Sistema de Pedidos</p>
+          </div>
+          <Link href="/summary">
+            <Button className="bg-primary hover:bg-primary/90 text-white font-bold px-6 py-2 h-12 rounded-lg">
+              📊 Resumen de Caja
+            </Button>
+          </Link>
         </div>
 
-        {/* Main Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Products Section */}
-          <div className="lg:col-span-2">
-            {/* Category Tabs */}
-            {categories.length > 0 && (
-              <CategoryTabs
-                categories={categories}
-                activeCategory={activeCategory}
-                onCategoryChange={setActiveCategory}
+        {!cashBoxOpen && (
+          <div className="text-center py-12 text-muted-foreground bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-lg font-bold">Abre la caja en el Resumen para comenzar a registrar pedidos</p>
+            <Link href="/summary">
+              <Button className="mt-4 bg-green-600 hover:bg-green-700">Ir a Resumen de Caja</Button>
+            </Link>
+          </div>
+        )}
+
+        {cashBoxOpen && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Products Section */}
+            <div className="lg:col-span-2">
+              {/* Category Tabs */}
+              {categories.length > 0 && (
+                <CategoryTabs
+                  categories={categories}
+                  activeCategory={activeCategory}
+                  onCategoryChange={setActiveCategory}
+                />
+              )}
+
+              {/* Products Grid */}
+              {filteredProducts.length > 0 ? (
+                <ProductList products={filteredProducts} onAddProduct={handleAddProduct} />
+              ) : (
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground text-lg">No hay productos en esta categoría</p>
+                </div>
+              )}
+            </div>
+
+            {/* Order Summary Sidebar */}
+            <div className="lg:col-span-1">
+              <OrderSummary
+                items={orderItems}
+                onUpdateQuantity={handleUpdateQuantity}
+                onRemoveItem={handleRemoveItem}
+                onClearOrder={handleClearOrder}
+                onPrint={handlePrint}
               />
-            )}
-
-            {/* Products Grid */}
-            {filteredProducts.length > 0 ? (
-              <ProductList products={filteredProducts} onAddProduct={handleAddProduct} />
-            ) : (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground text-lg">No hay productos en esta categoría</p>
-              </div>
-            )}
+            </div>
           </div>
-
-          {/* Order Summary Sidebar */}
-          <div className="lg:col-span-1">
-            <OrderSummary
-              items={orderItems}
-              onUpdateQuantity={handleUpdateQuantity}
-              onRemoveItem={handleRemoveItem}
-              onClearOrder={handleClearOrder}
-              onPrint={handlePrint}
-            />
-          </div>
-        </div>
+        )}
       </div>
     </main>
   )

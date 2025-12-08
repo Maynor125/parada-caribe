@@ -21,7 +21,7 @@ export default function ProductList({ products, onAddProduct }: ProductListProps
             <div className="flex flex-col gap-4">
               <div>
                 <h3 className="text-lg font-bold text-foreground">{product.name}</h3>
-                <p className="text-3xl font-bold text-primary mt-3">${Number(product.price).toFixed(2)}</p>
+                <p className="text-3xl font-bold text-primary mt-3">C${Number(product.price).toFixed(2)}</p>
               </div>
               <Button
                 onClick={() => onAddProduct(product)}

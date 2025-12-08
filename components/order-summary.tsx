@@ -79,7 +79,7 @@ export default function OrderSummary({
           <div className="border-t-2 border-primary border-opacity-20 pt-4">
             <div className="flex justify-between items-center mb-6 bg-primary bg-opacity-10 p-4 rounded-lg">
               <span className="text-lg font-bold text-foreground">Total:</span>
-              <span className="text-4xl font-bold text-white ">${total.toFixed(2)}</span>
+              <span className="text-4xl font-bold text-white ">C${total.toFixed(2)}</span>
             </div>
 
             {/* Action Buttons */}
