@@ -6,6 +6,8 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import CashBoxHeader from "@/components/cash-box-header"
+import Image from "next/image"
+import logoParadaCaribe from "../../public/iso-paradacaribe.png";
 
 export default function SummaryPage() {
   const [loading, setLoading] = useState(true)
@@ -145,9 +147,19 @@ export default function SummaryPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header with navigation */}
         <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl md:text-5xl font-bold text-primary mb-2">🏝️ PARADA CARIBE</h1>
+          <div className="flex">
+            <Image
+                          src={logoParadaCaribe}
+                          alt="Descripción"
+                          width={65}
+                          height={65}
+                          className="w-20 h-20"
+                        />
+                        <div className="">
+                           <h1 className="text-4xl md:text-5xl font-bold text-primary mb-2"> PARADA CARIBE</h1>
             <p className="text-lg text-muted-foreground">Resumen de Caja</p>
+                        </div>
+           
           </div>
           <Link href="/">
             <Button className="bg-primary hover:bg-primary/90 text-white font-bold px-6 py-2 h-12 rounded-lg">

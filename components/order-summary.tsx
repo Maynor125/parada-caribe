@@ -89,7 +89,7 @@ export default function OrderSummary({
                 disabled={items.length === 0}
                 className="w-full bg-primary hover:bg-primary-dark text-white h-14 font-bold text-base rounded-lg"
               >
-                🖨️ Imprimir (2 Copias)
+                🖨️ Realizar venta 
               </Button>
               <Button
                 onClick={onClearOrder}
