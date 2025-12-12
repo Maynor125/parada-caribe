@@ -4,6 +4,7 @@ export interface Product {
   price: number | string
   category: string
   created_at?: string
+  current_stock:number
 }
 
 export interface OrderItem {

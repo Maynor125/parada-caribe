@@ -1,46 +1,40 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import CategoryTabs from "@/components/category-tabs";
-import ProductList from "@/components/product-list";
-import OrderSummary from "@/components/order-summary";
-import type { Product, OrderItem } from "@/types";
-import logoParadaCaribe from "../public/iso-paradacaribe.png";
-import Image from "next/image";
+import { useEffect, useState } from "react"
+import { createClient } from "@supabase/supabase-js"
+import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import CategoryTabs from "@/components/category-tabs"
+import ProductList from "@/components/product-list"
+import OrderSummary from "@/components/order-summary"
+import type { Product, OrderItem } from "@/types"
+import logoParadaCaribe from "../public/iso-paradacaribe.png"
+import Image from "next/image"
 
 export default function Page() {
-  const [loading, setLoading] = useState(true);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+  const [loading, setLoading] = useState(true)
+  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<string[]>([])
+  const [activeCategory, setActiveCategory] = useState<string>("")
+  const [error, setError] = useState<string | null>(null)
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([])
 
-  const [cashBoxOpen, setCashBoxOpen] = useState(false);
-  const [currentSession, setCurrentSession] = useState<any>(null);
-  const [supabaseClient, setSupabaseClient] = useState<any>(null);
+  const [cashBoxOpen, setCashBoxOpen] = useState(false)
+  const [currentSession, setCurrentSession] = useState<any>(null)
+  const [supabaseClient, setSupabaseClient] = useState<any>(null)
 
   const fetchData = async () => {
     try {
-      setLoading(true);
+      setLoading(true)
 
-      if (
-        !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-        !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      ) {
+      if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
         throw new Error(
-          "Environment variables not set. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY"
-        );
+          "Environment variables not set. Check NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY",
+        )
       }
 
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      );
-      setSupabaseClient(supabase);
+      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+      setSupabaseClient(supabase)
 
       // Check for existing cash sessions if table exists
       try {
@@ -49,93 +43,95 @@ export default function Page() {
           .select("*")
           .is("closed_at", null)
           .order("opened_at", { ascending: false })
-          .limit(1);
+          .limit(1)
 
         if (sessions && sessions.length > 0) {
-          setCurrentSession(sessions[0]);
-          setCashBoxOpen(true);
+          setCurrentSession(sessions[0])
+          setCashBoxOpen(true)
         }
       } catch (e) {
-        // cash_sessions table doesn't exist yet, that's okay
-        console.log("[v0] Cash sessions table not ready yet");
+        console.log("[v0] Cash sessions table not ready yet")
       }
 
       const { data: productsData, error: productsError } = await supabase
         .from("products")
-        .select("id, name, price, category_id, categories(name)")
+        .select("id, name, price, category_id, current_stock, min_stock, recipe_id, categories(name)")
         .order("category_id")
-        .order("name");
+        .order("name")
 
       if (productsError) {
-        throw productsError;
+        throw productsError
       }
 
       if (!productsData || productsData.length === 0) {
-        console.log("[v0] No products found");
-        setProducts([]);
-        setCategories([]);
-        return;
+        console.log("[v0] No products found")
+        setProducts([])
+        setCategories([])
+        return
       }
 
-      console.log("[v0] Raw products:", productsData);
+      console.log("[v0] Raw products:", productsData)
 
       const sortedData = productsData.sort((a: any, b: any) => {
         if (a.category !== b.category) {
-          return a.category.localeCompare(b.category);
+          return a.category.localeCompare(b.category)
         }
-        return a.name.localeCompare(b.name);
-      });
+        return a.name.localeCompare(b.name)
+      })
 
       const transformedData = sortedData.map((product: any) => ({
         id: product.id,
         name: product.name,
         price: product.price,
+        current_stock: product.current_stock || 0,
+        min_stock: product.min_stock || 0,
+        recipe_id: product.recipe_id,
         category: product.categories.name || "Sin categoría",
-      }));
+      }))
 
-      console.log("[v0] Transformed data:", transformedData);
+      console.log("[v0] Transformed data:", transformedData)
 
-      setProducts(transformedData);
+      setProducts(transformedData)
 
-      const uniqueCategories = Array.from(
-        new Set(transformedData.map((p) => p.category))
-      ).sort();
-      console.log("[v0] Unique categories:", uniqueCategories);
+      const uniqueCategories = Array.from(new Set(transformedData.map((p) => p.category))).sort()
+      console.log("[v0] Unique categories:", uniqueCategories)
 
-      setCategories(uniqueCategories);
+      setCategories(uniqueCategories)
       if (uniqueCategories.length > 0) {
-        setActiveCategory(uniqueCategories[0]);
-        console.log("[v0] Active category set to:", uniqueCategories[0]);
+        setActiveCategory(uniqueCategories[0])
+        console.log("[v0] Active category set to:", uniqueCategories[0])
       }
     } catch (err) {
-      console.error("[v0] Error loading data:", err);
-      setError(err instanceof Error ? err.message : "Error al cargar datos");
+      console.error("[v0] Error loading data:", err)
+      setError(err instanceof Error ? err.message : "Error al cargar datos")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchData()
+  }, [])
 
-  const filteredProducts = products.filter(
-    (p) => p.category === activeCategory
-  );
+  const filteredProducts = products.filter((p) => p.category === activeCategory)
 
   const handleAddProduct = (product: Product) => {
-    const existingItem = orderItems.find(
-      (item) => item.product_id === product.id
-    );
+    if (!product.recipe_id && product.current_stock <= 0) {
+      alert(`No hay stock disponible de ${product.name}`)
+      return
+    }
+
+    const existingItem = orderItems.find((item) => item.product_id === product.id)
 
     if (existingItem) {
+      if (!product.recipe_id && existingItem.quantity + 1 > product.current_stock) {
+        alert(`Stock insuficiente. Solo quedan ${product.current_stock} unidades de ${product.name}`)
+        return
+      }
+
       setOrderItems(
-        orderItems.map((item) =>
-          item.product_id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        )
-      );
+        orderItems.map((item) => (item.product_id === product.id ? { ...item, quantity: item.quantity + 1 } : item)),
+      )
     } else {
       setOrderItems([
         ...orderItems,
@@ -146,35 +142,40 @@ export default function Page() {
           price: Number(product.price),
           quantity: 1,
         },
-      ]);
+      ])
     }
-  };
+  }
 
   const handleUpdateQuantity = (itemId: string, quantity: number) => {
     if (quantity < 1) {
-      handleRemoveItem(itemId);
-      return;
+      handleRemoveItem(itemId)
+      return
     }
-    setOrderItems(
-      orderItems.map((item) =>
-        item.id === itemId ? { ...item, quantity } : item
-      )
-    );
-  };
+
+    const item = orderItems.find((i) => i.id === itemId)
+    if (item) {
+      const product = products.find((p) => p.id === item.product_id)
+      if (product && !product.recipe_id && quantity > product.current_stock) {
+        alert(`Stock insuficiente. Solo quedan ${product.current_stock} unidades`)
+        return
+      }
+    }
+
+    setOrderItems(orderItems.map((item) => (item.id === itemId ? { ...item, quantity } : item)))
+  }
 
   const handleRemoveItem = (itemId: string) => {
-    setOrderItems(orderItems.filter((item) => item.id !== itemId));
-  };
+    setOrderItems(orderItems.filter((item) => item.id !== itemId))
+  }
 
   const handleClearOrder = () => {
-    setOrderItems([]);
-  };
+    setOrderItems([])
+  }
 
   const saveOrderToDatabase = async (items: OrderItem[], total: number) => {
-    if (!supabaseClient || !currentSession) return;
+    if (!supabaseClient || !currentSession) return
 
     try {
-      // Insert order
       const { data: orderData, error: orderError } = await supabaseClient
         .from("orders")
         .insert([
@@ -189,13 +190,12 @@ export default function Page() {
             total: total,
           },
         ])
-        .select();
+        .select()
 
-      if (orderError) throw orderError;
+      if (orderError) throw orderError
 
-      // Update session totals
-      const updatedTotalOrders = (currentSession.total_orders || 0) + 1;
-      const updatedTotalSales = (currentSession.total_sales || 0) + total;
+      const updatedTotalOrders = (currentSession.total_orders || 0) + 1
+      const updatedTotalSales = (currentSession.total_sales || 0) + total
 
       const { error: updateError } = await supabaseClient
         .from("cash_sessions")
@@ -203,47 +203,72 @@ export default function Page() {
           total_orders: updatedTotalOrders,
           total_sales: updatedTotalSales,
         })
-        .eq("id", currentSession.id);
+        .eq("id", currentSession.id)
 
-      if (updateError) throw updateError;
+      if (updateError) throw updateError
 
-      // Update local session state
       setCurrentSession({
         ...currentSession,
         total_orders: updatedTotalOrders,
         total_sales: updatedTotalSales,
-      });
+      })
 
-      console.log("[v0] Orden guardada:", orderData);
+      console.log("[v0] Orden guardada:", orderData)
     } catch (err) {
-      console.error("[v0] Error saving order:", err);
+      console.error("[v0] Error saving order:", err)
     }
-  };
+  }
+
+  const discountProductStock = async (items: OrderItem[]) => {
+    if (!supabaseClient) return
+
+    try {
+      for (const item of items) {
+        const product = products.find((p) => p.id === item.product_id)
+
+        if (product && !product.recipe_id) {
+          const newStock = product.current_stock - item.quantity
+
+          const { error: stockError } = await supabaseClient
+            .from("products")
+            .update({ current_stock: newStock })
+            .eq("id", item.product_id)
+
+          if (stockError) {
+            console.error(`[v0] Error actualizando stock de ${item.product_name}:`, stockError)
+            throw stockError
+          }
+
+          console.log(`[v0] Stock descontado: ${item.product_name} (${item.quantity} unidades)`)
+        }
+      }
+
+      await fetchData()
+    } catch (err) {
+      console.error("[v0] Error descontando stock:", err)
+      alert("Error al descontar stock. Verifica el inventario manualmente.")
+    }
+  }
 
   const handlePrint = async () => {
-    const total = orderItems.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
+    const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
-    await saveOrderToDatabase(orderItems, total);
+    await saveOrderToDatabase(orderItems, total)
+
+    await discountProductStock(orderItems)
 
     const itemsHTML = orderItems
       .map(
         (item) =>
           `<tr>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${
-          item.product_name
-        }</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">x${
-          item.quantity
-        }</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.product_name}</td>
+        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">x${item.quantity}</td>
         <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${(
           item.price * item.quantity
         ).toFixed(2)}</td>
-      </tr>`
+      </tr>`,
       )
-      .join("");
+      .join("")
 
     const printContent = `
       <!DOCTYPE html>
@@ -372,30 +397,28 @@ export default function Page() {
           </div>
         </body>
       </html>
-    `;
+    `
 
-    const printWindow = window.open("", "", "width=600,height=800");
+    const printWindow = window.open("", "", "width=600,height=800")
     if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
+      printWindow.document.write(printContent)
+      printWindow.document.close()
       setTimeout(() => {
-        printWindow.print();
-        handleClearOrder();
-      }, 250);
+        printWindow.print()
+        handleClearOrder()
+      }, 250)
     }
-  };
+  }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center flex align-middle">
           <div className="mb-4 text-4xl">🏝️</div>
-          <p className="text-xl font-bold text-foreground">
-            Cargando productos...
-          </p>
+          <p className="text-xl font-bold text-foreground">Cargando productos...</p>
         </div>
       </div>
-    );
+    )
   }
 
   if (error) {
@@ -404,12 +427,11 @@ export default function Page() {
         <div className="text-center">
           <p className="text-xl font-bold text-red-600">Error: {error}</p>
           <p className="text-sm text-muted-foreground mt-2">
-            Verifica que Supabase esté conectado y las variables de entorno
-            estén configuradas
+            Verifica que Supabase esté conectado y las variables de entorno estén configuradas
           </p>
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -418,19 +440,22 @@ export default function Page() {
         <div className="mb-8 flex items-center justify-between">
           <div className="flex">
             <Image
-              src={logoParadaCaribe}
+              src={logoParadaCaribe || "/placeholder.svg"}
               alt="Descripción"
               width={65}
               height={65}
               className="w-20 h-20"
             />
             <div className="">
-              <h1 className="text-4xl md:text-5xl font-bold text-primary mb-2">
-              PARADA CARIBE
-            </h1>
-            <p className="text-lg text-muted-foreground">Sistema de Pedidos</p>
+              <h1 className="text-4xl md:text-5xl font-bold text-primary mb-2">PARADA CARIBE</h1>
+              <p className="text-lg text-muted-foreground">Sistema de Pedidos</p>
             </div>
           </div>
+          <Link href="/inventary">
+            <Button className="bg-primary hover:bg-primary/90 text-white font-bold px-6 py-2 h-12 rounded-lg">
+              Inventario
+            </Button>
+          </Link>
           <Link href="/summary">
             <Button className="bg-primary hover:bg-primary/90 text-white font-bold px-6 py-2 h-12 rounded-lg">
               📊 Resumen de Caja
@@ -440,22 +465,16 @@ export default function Page() {
 
         {!cashBoxOpen && (
           <div className="text-center py-12 text-muted-foreground bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-lg font-bold">
-              Abre la caja en el Resumen para comenzar a registrar pedidos
-            </p>
+            <p className="text-lg font-bold">Abre la caja en el Resumen para comenzar a registrar pedidos</p>
             <Link href="/summary">
-              <Button className="mt-4 bg-green-600 hover:bg-green-700">
-                Ir a Resumen de Caja
-              </Button>
+              <Button className="mt-4 bg-green-600 hover:bg-green-700">Ir a Resumen de Caja</Button>
             </Link>
           </div>
         )}
 
         {cashBoxOpen && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Products Section */}
             <div className="lg:col-span-2">
-              {/* Category Tabs */}
               {categories.length > 0 && (
                 <CategoryTabs
                   categories={categories}
@@ -464,22 +483,15 @@ export default function Page() {
                 />
               )}
 
-              {/* Products Grid */}
               {filteredProducts.length > 0 ? (
-                <ProductList
-                  products={filteredProducts}
-                  onAddProduct={handleAddProduct}
-                />
+                <ProductList products={filteredProducts} onAddProduct={handleAddProduct} />
               ) : (
                 <div className="text-center py-12">
-                  <p className="text-muted-foreground text-lg">
-                    No hay productos en esta categoría
-                  </p>
+                  <p className="text-muted-foreground text-lg">No hay productos en esta categoría</p>
                 </div>
               )}
             </div>
 
-            {/* Order Summary Sidebar */}
             <div className="lg:col-span-1">
               <OrderSummary
                 items={orderItems}
@@ -493,5 +505,5 @@ export default function Page() {
         )}
       </div>
     </main>
-  );
+  )
 }

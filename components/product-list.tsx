@@ -1,7 +1,9 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
+import { AlertTriangle, Package } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import type { Product } from "@/types"
 
 interface ProductListProps {
@@ -11,28 +13,65 @@ interface ProductListProps {
 
 export default function ProductList({ products, onAddProduct }: ProductListProps) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {products.map((product) => (
-        <Card
-          key={product.id}
-          className="hover:shadow-xl transition-all cursor-pointer hover:scale-105 border-2 border-primary border-opacity-20 bg-surface"
-        >
-          <CardContent className="pt-6">
-            <div className="flex flex-col gap-4">
-              <div>
-                <h3 className="text-lg font-bold text-foreground">{product.name}</h3>
-                <p className="text-3xl font-bold text-primary mt-3">C${Number(product.price).toFixed(2)}</p>
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-6">
+      {products.map((product) => {
+        const isLowStock = product.current_stock <= product.min_stock
+        const isOutOfStock = !product.recipe_id && product.current_stock <= 0
+
+        return (
+          <Card
+            key={product.id}
+            className={`cursor-pointer transition-all hover:shadow-lg ${
+              isOutOfStock ? "opacity-50 border-red-300" : ""
+            }`}
+            onClick={() => !isOutOfStock && onAddProduct(product)}
+          >
+            <CardContent className="p-4">
+              <div className="flex flex-col gap-2">
+                {/* Nombre del producto */}
+                <h3 className="font-bold text-lg text-foreground line-clamp-2">{product.name}</h3>
+
+                {/* Precio */}
+                <p className="text-2xl font-bold text-primary">${product.price.toFixed(2)}</p>
+
+                {/* Stock info */}
+                <div className="flex items-center gap-2 mt-2">
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Stock: {product.current_stock}</span>
+
+                  {/* Alerta de stock bajo */}
+                  {isLowStock && !isOutOfStock && <AlertTriangle className="h-4 w-4 text-orange-500" />}
+                </div>
+
+                {/* Badge de estado */}
+                {isOutOfStock && (
+                  <Badge variant="destructive" className="w-fit">
+                    Sin stock
+                  </Badge>
+                )}
+
+                {isLowStock && !isOutOfStock && (
+                  <Badge variant="secondary" className="w-fit bg-orange-100 text-orange-700">
+                    Stock bajo
+                  </Badge>
+                )}
+
+                {/* Botón de agregar */}
+                <Button
+                  className="w-full mt-2"
+                  disabled={isOutOfStock}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onAddProduct(product)
+                  }}
+                >
+                  {isOutOfStock ? "Sin stock" : "Agregar"}
+                </Button>
               </div>
-              <Button
-                onClick={() => onAddProduct(product)}
-                className="w-full bg-primary hover:bg-primary-dark text-white h-14 text-lg font-bold rounded-lg"
-              >
-                + Agregar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        )
+      })}
     </div>
   )
 }
