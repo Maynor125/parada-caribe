@@ -99,7 +99,26 @@ export default function OrderPreparationPage() {
     setPreparing(true)
 
     try {
-      // Verificar que hay suficiente inventario
+      // 1. Buscar el producto vinculado a esta receta
+      const { data: productData, error: productError } = await supabase
+        .from("products")
+        .select("id, name, current_stock")
+        .eq("recipe_id", selectedRecipe)
+        .maybeSingle()
+
+      if (productError) throw productError
+
+      // Verificar que existe un producto vinculado
+      if (!productData) {
+        toast({
+          title: "Error",
+          description: "Esta receta no está vinculada a ningún producto. Verifica la configuración.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // 2. Verificar que hay suficiente inventario
       for (const item of recipeItems) {
         const requiredQuantity = item.quantity * quantity
         if (item.ingredients.current_quantity < requiredQuantity) {
@@ -109,7 +128,7 @@ export default function OrderPreparationPage() {
         }
       }
 
-      // Descontar ingredientes
+      // 3. Descontar ingredientes
       for (const item of recipeItems) {
         const newQuantity = item.ingredients.current_quantity - item.quantity * quantity
 
@@ -125,15 +144,38 @@ export default function OrderPreparationPage() {
         })
       }
 
-      toast({
-        title: "Éxito",
-        description: `Orden de ${quantity} ${recipes.find((r) => r.id === selectedRecipe)?.name || "plato(s)"} preparada. Inventario actualizado.`,
+      // 4. Aumentar stock del producto vinculado
+      const newProductStock = (productData.current_stock || 0) + quantity
+      
+      const { error: updateProductError } = await supabase
+        .from("products")
+        .update({ current_stock: newProductStock })
+        .eq("id", productData.id)
+
+      if (updateProductError) throw updateProductError
+
+      // Registrar log del producto
+      await supabase.from("inventory_logs").insert({
+        product_id: productData.id,
+        movement_type: "recipe_produced",
+        quantity: quantity,
+        recipe_id: selectedRecipe,
+        notes: `Producción de ${quantity} ${productData.name}(s) mediante receta`,
       })
 
+      const recipeName = recipes.find((r) => r.id === selectedRecipe)?.name || "plato(s)"
+      
+      toast({
+        title: "Éxito",
+        description: `${quantity} ${recipeName} preparado(s). Stock de ${productData.name} aumentado a ${newProductStock} unidades.`,
+      })
+
+      // 5. Resetear formulario y refrescar datos
       setSelectedRecipe("")
       setQuantity(1)
       setRecipeItems([])
       fetchRecipes() // Refresca para ver cambios
+      
     } catch (error: any) {
       toast({
         title: "Error",

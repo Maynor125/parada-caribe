@@ -164,7 +164,7 @@ export default function IngredientsTable({ searchTerm }: { searchTerm: string })
                     </div>
                   </TableCell>
                   <TableCell>{ing.min_quantity}</TableCell>
-                  <TableCell>${ing.cost_per_unit.toFixed(2)}</TableCell>
+                  <TableCell>C${ing.cost_per_unit.toFixed(2)}</TableCell>
                   <TableCell>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={() => openEditModal(ing)}>

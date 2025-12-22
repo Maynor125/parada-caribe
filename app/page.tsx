@@ -12,7 +12,7 @@ import logoParadaCaribe from "../public/iso-paradacaribe.png"
 import Image from "next/image"
 
 export default function Page() {
-  const [loading, setLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [activeCategory, setActiveCategory] = useState<string>("")
@@ -22,10 +22,11 @@ export default function Page() {
   const [cashBoxOpen, setCashBoxOpen] = useState(false)
   const [currentSession, setCurrentSession] = useState<any>(null)
   const [supabaseClient, setSupabaseClient] = useState<any>(null)
+  const [updatingStock, setUpdatingStock] = useState(false)
 
-  const fetchData = async () => {
+  const fetchInitialData = async () => {
     try {
-      setLoading(true)
+      setInitialLoading(true)
 
       if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
         throw new Error(
@@ -70,8 +71,6 @@ export default function Page() {
         return
       }
 
-      console.log("[v0] Raw products:", productsData)
-
       const sortedData = productsData.sort((a: any, b: any) => {
         if (a.category !== b.category) {
           return a.category.localeCompare(b.category)
@@ -89,28 +88,69 @@ export default function Page() {
         category: product.categories.name || "Sin categoría",
       }))
 
-      console.log("[v0] Transformed data:", transformedData)
-
       setProducts(transformedData)
 
       const uniqueCategories = Array.from(new Set(transformedData.map((p) => p.category))).sort()
-      console.log("[v0] Unique categories:", uniqueCategories)
-
       setCategories(uniqueCategories)
       if (uniqueCategories.length > 0) {
         setActiveCategory(uniqueCategories[0])
-        console.log("[v0] Active category set to:", uniqueCategories[0])
       }
     } catch (err) {
       console.error("[v0] Error loading data:", err)
       setError(err instanceof Error ? err.message : "Error al cargar datos")
     } finally {
-      setLoading(false)
+      setInitialLoading(false)
     }
   }
 
+ const updateProductStock = async (items: OrderItem[]) => {
+  if (!supabaseClient) return
+
+  setUpdatingStock(true)
+  
+  try {
+    const updatedProducts = [...products]
+    
+    for (const item of items) {
+      const productIndex = updatedProducts.findIndex((p) => p.id === item.product_id)
+      
+      if (productIndex !== -1) {
+        // Descontar stock para TODOS los productos, independientemente de si tienen receta o no
+        const currentStock = updatedProducts[productIndex].current_stock
+        const newStock = currentStock - item.quantity
+        
+        updatedProducts[productIndex] = {
+          ...updatedProducts[productIndex],
+          current_stock: Math.max(0, newStock)
+        }
+        
+        // Actualizar en base de datos
+        supabaseClient
+          .from("products")
+          .update({ current_stock: Math.max(0, newStock) })
+          .eq("id", item.product_id)
+          .then(({ error }: any) => {
+            if (error) {
+              console.error(`[v0] Error actualizando stock de ${item.product_name}:`, error)
+            }
+          })
+          .catch((err: any) => {
+            console.error(`[v0] Error en actualización de stock:`, err)
+          })
+      }
+    }
+    
+    setProducts(updatedProducts)
+    
+  } catch (err) {
+    console.error("[v0] Error descontando stock:", err)
+  } finally {
+    setUpdatingStock(false)
+  }
+}
+
   useEffect(() => {
-    fetchData()
+    fetchInitialData()
   }, [])
 
   const filteredProducts = products.filter((p) => p.category === activeCategory)
@@ -173,7 +213,7 @@ export default function Page() {
   }
 
   const saveOrderToDatabase = async (items: OrderItem[], total: number) => {
-    if (!supabaseClient || !currentSession) return
+    if (!supabaseClient || !currentSession) return false
 
     try {
       const { data: orderData, error: orderError } = await supabaseClient
@@ -197,15 +237,16 @@ export default function Page() {
       const updatedTotalOrders = (currentSession.total_orders || 0) + 1
       const updatedTotalSales = (currentSession.total_sales || 0) + total
 
-      const { error: updateError } = await supabaseClient
+      supabaseClient
         .from("cash_sessions")
         .update({
           total_orders: updatedTotalOrders,
           total_sales: updatedTotalSales,
         })
         .eq("id", currentSession.id)
-
-      if (updateError) throw updateError
+        .then(({ error }: any) => {
+          if (error) console.error("[v0] Error updating cash session:", error)
+        })
 
       setCurrentSession({
         ...currentSession,
@@ -214,48 +255,21 @@ export default function Page() {
       })
 
       console.log("[v0] Orden guardada:", orderData)
+      return true
     } catch (err) {
       console.error("[v0] Error saving order:", err)
-    }
-  }
-
-  const discountProductStock = async (items: OrderItem[]) => {
-    if (!supabaseClient) return
-
-    try {
-      for (const item of items) {
-        const product = products.find((p) => p.id === item.product_id)
-
-        if (product && !product.recipe_id) {
-          const newStock = product.current_stock - item.quantity
-
-          const { error: stockError } = await supabaseClient
-            .from("products")
-            .update({ current_stock: newStock })
-            .eq("id", item.product_id)
-
-          if (stockError) {
-            console.error(`[v0] Error actualizando stock de ${item.product_name}:`, stockError)
-            throw stockError
-          }
-
-          console.log(`[v0] Stock descontado: ${item.product_name} (${item.quantity} unidades)`)
-        }
-      }
-
-      await fetchData()
-    } catch (err) {
-      console.error("[v0] Error descontando stock:", err)
-      alert("Error al descontar stock. Verifica el inventario manualmente.")
+      return false
     }
   }
 
   const handlePrint = async () => {
     const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
-    await saveOrderToDatabase(orderItems, total)
+    saveOrderToDatabase(orderItems, total).catch(() => {
+      console.log("[v0] Orden no se pudo guardar, pero continuando...")
+    })
 
-    await discountProductStock(orderItems)
+    updateProductStock(orderItems)
 
     const itemsHTML = orderItems
       .map(
@@ -403,14 +417,22 @@ export default function Page() {
     if (printWindow) {
       printWindow.document.write(printContent)
       printWindow.document.close()
+      
+      // Limpiar orden inmediatamente
+      handleClearOrder()
+      
+      // Imprimir después de que se cargue el contenido
       setTimeout(() => {
         printWindow.print()
-        handleClearOrder()
       }, 250)
+    } else {
+      // Si la ventana emergente está bloqueada
+      handleClearOrder()
+      alert("Por favor permite ventanas emergentes para imprimir el voucher")
     }
   }
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center flex align-middle">
@@ -451,16 +473,18 @@ export default function Page() {
               <p className="text-lg text-muted-foreground">Sistema de Pedidos</p>
             </div>
           </div>
-          <Link href="/inventary">
-            <Button className="bg-primary hover:bg-primary/90 text-white font-bold px-6 py-2 h-12 rounded-lg">
-              Inventario
-            </Button>
-          </Link>
-          <Link href="/summary">
-            <Button className="bg-primary hover:bg-primary/90 text-white font-bold px-6 py-2 h-12 rounded-lg">
-              📊 Resumen de Caja
-            </Button>
-          </Link>
+          <div className="flex gap-3">
+            <Link href="/inventary">
+              <Button className="bg-primary hover:bg-primary/90 text-white font-bold px-6 py-2 h-12 rounded-lg">
+                Inventario
+              </Button>
+            </Link>
+            <Link href="/summary">
+              <Button className="bg-primary hover:bg-primary/90 text-white font-bold px-6 py-2 h-12 rounded-lg">
+                📊 Resumen de Caja
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {!cashBoxOpen && (
@@ -493,6 +517,11 @@ export default function Page() {
             </div>
 
             <div className="lg:col-span-1">
+              {updatingStock && (
+                <div className="mb-4 p-2 bg-blue-50 text-blue-700 text-sm rounded text-center">
+                  Actualizando stock...
+                </div>
+              )}
               <OrderSummary
                 items={orderItems}
                 onUpdateQuantity={handleUpdateQuantity}
