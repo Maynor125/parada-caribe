@@ -10,6 +10,7 @@ import OrderSummary from "@/components/order-summary"
 import type { Product, OrderItem } from "@/types"
 import logoParadaCaribe from "../public/iso-paradacaribe.png"
 import Image from "next/image"
+import { toast } from "@/hooks/use-toast"
 
 export default function Page() {
   const [initialLoading, setInitialLoading] = useState(true)
@@ -23,6 +24,8 @@ export default function Page() {
   const [currentSession, setCurrentSession] = useState<any>(null)
   const [supabaseClient, setSupabaseClient] = useState<any>(null)
   const [updatingStock, setUpdatingStock] = useState(false)
+
+  const logoUrl = "/iso-paradacaribe.png"
 
   const fetchInitialData = async () => {
     try {
@@ -212,155 +215,369 @@ export default function Page() {
     setOrderItems([])
   }
 
-  const saveOrderToDatabase = async (items: OrderItem[], total: number) => {
-    if (!supabaseClient || !currentSession) return false
+ const saveOrderToDatabase = async (items: OrderItem[], total: number) => {
+  if (!supabaseClient || !currentSession) return null
 
-    try {
-      const { data: orderData, error: orderError } = await supabaseClient
-        .from("orders")
-        .insert([
-          {
-            cash_session_id: currentSession.id,
-            items: items.map((item) => ({
-              product_id: item.product_id,
-              product_name: item.product_name,
-              quantity: item.quantity,
-              price: item.price,
-            })),
-            total: total,
-          },
-        ])
-        .select()
+  try {
+    // Calcular número de pedido basado en el total de órdenes
+    const updatedTotalOrders = (currentSession.total_orders || 0) + 1
+    const orderNumber = updatedTotalOrders
+    
+    // Guardar la orden (sin order_number en la BD)
+    const { data: orderData, error: orderError } = await supabaseClient
+      .from("orders")
+      .insert([
+        {
+          cash_session_id: currentSession.id,
+          items: items.map((item) => ({
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            price: item.price,
+          })),
+          total: total,
+        },
+      ])
+      .select()
 
-      if (orderError) throw orderError
+    if (orderError) {
+      console.error("[v0] Error insertando orden:", orderError)
+      throw orderError
+    }
 
-      const updatedTotalOrders = (currentSession.total_orders || 0) + 1
-      const updatedTotalSales = (currentSession.total_sales || 0) + total
-
-      supabaseClient
-        .from("cash_sessions")
-        .update({
-          total_orders: updatedTotalOrders,
-          total_sales: updatedTotalSales,
-        })
-        .eq("id", currentSession.id)
-        .then(({ error }: any) => {
-          if (error) console.error("[v0] Error updating cash session:", error)
-        })
-
-      setCurrentSession({
-        ...currentSession,
+    // Actualizar sesión de caja
+    const updatedTotalSales = (currentSession.total_sales || 0) + total
+    
+    const { error: updateError } = await supabaseClient
+      .from("cash_sessions")
+      .update({
         total_orders: updatedTotalOrders,
         total_sales: updatedTotalSales,
       })
+      .eq("id", currentSession.id)
 
-      console.log("[v0] Orden guardada:", orderData)
-      return true
-    } catch (err) {
-      console.error("[v0] Error saving order:", err)
-      return false
+    if (updateError) {
+      console.error("[v0] Error actualizando sesión:", updateError)
     }
-  }
 
-  const handlePrint = async () => {
-    const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-
-    saveOrderToDatabase(orderItems, total).catch(() => {
-      console.log("[v0] Orden no se pudo guardar, pero continuando...")
+    // Actualizar la sesión local
+    setCurrentSession({
+      ...currentSession,
+      total_orders: updatedTotalOrders,
+      total_sales: updatedTotalSales,
     })
 
+    console.log("[v0] Orden guardada. Número de pedido:", orderNumber)
+    
+    // Retornar la orden con el número calculado (no viene de la BD)
+    const savedOrder = orderData ? orderData[0] : null
+    return savedOrder ? { 
+      ...savedOrder, 
+      order_number: orderNumber,
+      order_number_formatted: orderNumber.toString().padStart(3, '0')
+    } : null
+    
+  } catch (err: any) {
+    console.error("[v0] Error guardando orden:", err)
+    return null
+  }
+}
+
+const handlePrint = async () => {
+  const total = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
+  // Guardar la orden y obtener el número de pedido
+  const savedOrder = await saveOrderToDatabase(orderItems, total)
+  
+  if (savedOrder) {
     updateProductStock(orderItems)
+
+    // Usar el número de pedido de la sesión
+    const orderNumber = savedOrder.order_number_formatted || "001"
 
     const itemsHTML = orderItems
       .map(
         (item) =>
           `<tr>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">${item.product_name}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">x${item.quantity}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">$${(
-          item.price * item.quantity
-        ).toFixed(2)}</td>
-      </tr>`,
+            <td style="padding: 6px 4px; border-bottom: 1px solid #ddd; width: 55%; word-wrap: break-word;">${item.product_name}</td>
+            <td style="padding: 6px 4px; border-bottom: 1px solid #ddd; text-align: center; width: 15%;">x${item.quantity}</td>
+            <td style="padding: 6px 4px; border-bottom: 1px solid #ddd; text-align: right; width: 30%; padding-right: 8px;">$${(
+              item.price * item.quantity
+            ).toFixed(2)}</td>
+          </tr>`,
       )
       .join("")
+
+    // URL del logo
+    const logoUrl = "/iso-paradacaribe.png"
+    
+    // Formatear fecha y hora con AM/PM
+    const now = new Date()
+    const fecha = now.toLocaleDateString("es-ES", {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    }).replace(/\./g, '') // Quitar puntos
+    
+    const hora = now.toLocaleTimeString("es-ES", {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true // Esto hace que muestre AM/PM
+    })
 
     const printContent = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Parada Caribe - Voucher</title>
+          <title>Parada Caribe - Pedido ${orderNumber}</title>
+          <meta charset="utf-8">
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5; }
+            @media print {
+              @page {
+                margin: 5mm;
+              }
+              body {
+                margin: 0;
+                padding: 0;
+                -webkit-print-color-adjust: exact;
+                color-adjust: exact;
+              }
+            }
+            
+            body { 
+              font-family: 'Arial', sans-serif; 
+              padding: 10px; 
+              background-color: #f5f5f5;
+              margin: 0;
+            }
+            
             .voucher { 
               background-color: white; 
               border: 3px solid #8B6F47; 
-              border-radius: 8px;
-              padding: 20px; 
-              max-width: 400px; 
-              margin: 20px auto;
-              box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+              border-radius: 6px;
+              padding: 15px; 
+              width: 100%;
+              max-width: 480px;
+              margin: 10px auto;
+              box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+              box-sizing: border-box;
             }
+            
             .header { 
-              text-align: center; 
-              margin-bottom: 20px; 
-              border-bottom: 2px solid #8B6F47;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 12px;
+              margin-bottom: 15px;
               padding-bottom: 10px;
+              border-bottom: 2px solid #8B6F47;
+              width: 100%;
             }
+            
+            .logo-img {
+              width: 70px;
+              height: 70px;
+              object-fit: contain;
+              flex-shrink: 0;
+            }
+            
+            .header-text {
+              text-align: center;
+              flex: 1;
+            }
+            
             .header h1 { 
               color: #8B6F47; 
-              margin: 0; 
+              margin: 0 0 4px 0; 
               font-size: 24px;
+              font-weight: bold;
+              letter-spacing: 0.5px;
+              line-height: 1.2;
+              text-align: center;
             }
+            
             .header p { 
               color: #666; 
-              margin: 5px 0 0 0; 
+              margin: 0; 
               font-size: 12px;
+              font-style: italic;
+              line-height: 1.3;
+              text-align: center;
             }
-            .items { margin: 20px 0; }
-            table { width: 100%; border-collapse: collapse; }
-            th { text-align: left; font-weight: bold; border-bottom: 2px solid #8B6F47; padding: 8px; }
+            
+            .order-number-display {
+              text-align: center;
+              margin: 10px 0 15px 0;
+              padding: 8px;
+              background-color: #8B6F47;
+              color: white;
+              border-radius: 4px;
+              font-size: 18px;
+              font-weight: bold;
+              letter-spacing: 1px;
+            }
+            
+            .order-info {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 15px;
+              font-size: 11px;
+              color: #555;
+              padding: 8px 10px;
+              background-color: #f9f9f9;
+              border-radius: 4px;
+              border: 1px solid #eee;
+              flex-wrap: wrap;
+              gap: 5px;
+            }
+            
+            .order-info > div {
+              flex: 1;
+              min-width: 80px;
+              text-align: center;
+            }
+            
+            .time-display {
+              font-size: 11px;
+              color: #555;
+              font-weight: normal;
+            }
+            
+            .time-display span {
+              font-weight: bold;
+              color: #8B6F47;
+            }
+            
+            .items { 
+              margin: 15px 0; 
+            }
+            
+            table { 
+              width: 100%; 
+              border-collapse: collapse;
+              table-layout: fixed;
+            }
+            
+            th { 
+              text-align: left; 
+              font-weight: bold; 
+              border-bottom: 2px solid #8B6F47; 
+              padding: 8px 4px;
+              font-size: 12px;
+              background-color: #f9f9f9;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+            
+            th:last-child {
+              padding-right: 8px;
+            }
+            
+            td {
+              padding: 6px 4px;
+              border-bottom: 1px solid #ddd;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+            
+            td:last-child {
+              padding-right: 8px;
+            }
+            
             .total { 
               font-size: 18px; 
               font-weight: bold; 
               text-align: right; 
-              margin-top: 15px;
+              margin-top: 20px;
               padding-top: 15px;
               border-top: 2px solid #8B6F47;
               color: #8B6F47;
+              padding-right: 8px;
             }
+            
             .footer { 
               text-align: center; 
-              margin-top: 15px; 
-              font-size: 12px; 
+              margin-top: 20px; 
+              font-size: 10px; 
               color: #666;
               border-top: 1px dashed #999;
               padding-top: 10px;
+              line-height: 1.4;
             }
-            .copy-label {
-              text-align: center;
-              font-weight: bold;
-              color: #8B6F47;
-              margin-bottom: 10px;
-              font-size: 14px;
+            
+            /* Ajustes para impresión */
+            @media print {
+              .voucher {
+                box-shadow: none;
+                margin: 0 auto;
+                max-width: 100%;
+                padding: 12px;
+                border: 2px solid #8B6F47;
+                width: 100%;
+              }
+              
+              body {
+                background-color: white;
+                padding: 0;
+                width: 100%;
+              }
+              
+              .logo-img {
+                -webkit-print-color-adjust: exact;
+                color-adjust: exact;
+              }
+              
+              .order-number-display {
+                -webkit-print-color-adjust: exact;
+                color-adjust: exact;
+              }
+              
+              table {
+                width: 100%;
+              }
+              
+              .total {
+                padding-right: 8px;
+              }
             }
-            .page-break { page-break-after: always; }
           </style>
         </head>
         <body>
-          <!-- Copia 1: Cliente -->
+          <!-- Un solo voucher -->
           <div class="voucher">
-            <div class="copy-label">COPIA CLIENTE</div>
             <div class="header">
-              <h1>🏝️ PARADA CARIBE</h1>
-              <p>Tu sabor caribeño favorito</p>
+              <img src="${logoUrl}" class="logo-img" alt="Parada Caribe Logo">
+              <div class="header-text">
+                <h1>PARADA CARIBE</h1>
+                <p>Tu sabor caribeño favorito</p>
+              </div>
             </div>
+            
+            <!-- Número de pedido destacado -->
+            <div class="order-number-display">
+              PEDIDO N° ${orderNumber}
+            </div>
+            
+            <div class="order-info">
+              <div>
+                <strong>Fecha:</strong><br>
+                ${fecha}
+              </div>
+              <div>
+                <strong>Hora:</strong><br>
+                ${hora}
+              </div>
+            </div>
+            
             <div class="items">
               <table>
                 <thead>
                   <tr>
-                    <th>Producto</th>
-                    <th style="text-align: right;">Cant</th>
-                    <th style="text-align: right;">Total</th>
+                    <th style="width: 55%; text-align: left;">PRODUCTO</th>
+                    <th style="width: 15%; text-align: center;">CANT</th>
+                    <th style="width: 30%; text-align: right;">TOTAL</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -368,70 +585,65 @@ export default function Page() {
                 </tbody>
               </table>
             </div>
+            
             <div class="total">
               TOTAL: $${total.toFixed(2)}
             </div>
+            
             <div class="footer">
-              <p>Fecha: ${new Date().toLocaleString("es-ES")}</p>
-              <p>¡Gracias por tu compra!</p>
+              <p>¡Gracias por tu preferencia!</p>
+              <p>Tu pedido está listo cuando escuches el número: <strong>${orderNumber}</strong></p>
             </div>
           </div>
-
-          <!-- Salto de página -->
-          <div class="page-break"></div>
-
-          <!-- Copia 2: Negocio -->
-          <div class="voucher">
-            <div class="copy-label">COPIA NEGOCIO</div>
-            <div class="header">
-              <h1>🏝️ PARADA CARIBE</h1>
-              <p>Tu sabor caribeño favorito</p>
-            </div>
-            <div class="items">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Producto</th>
-                    <th style="text-align: right;">Cant</th>
-                    <th style="text-align: right;">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${itemsHTML}
-                </tbody>
-              </table>
-            </div>
-            <div class="total">
-              TOTAL: $${total.toFixed(2)}
-            </div>
-            <div class="footer">
-              <p>Fecha: ${new Date().toLocaleString("es-ES")}</p>
-              <p>¡Gracias por tu compra!</p>
-            </div>
-          </div>
+          
+          <script>
+            // Script para cargar la imagen correctamente
+            document.addEventListener('DOMContentLoaded', function() {
+              var img = document.querySelector('.logo-img');
+              if (img) {
+                // Si la imagen no carga, intentar con ruta absoluta
+                img.onerror = function() {
+                  var currentPath = window.location.origin + '${logoUrl}';
+                  if (this.src !== currentPath) {
+                    this.src = currentPath;
+                  }
+                };
+              }
+            });
+          </script>
         </body>
       </html>
     `
 
-    const printWindow = window.open("", "", "width=600,height=800")
+    const printWindow = window.open("", "", "width=520,height=800")
     if (printWindow) {
       printWindow.document.write(printContent)
       printWindow.document.close()
       
-      // Limpiar orden inmediatamente
       handleClearOrder()
       
-      // Imprimir después de que se cargue el contenido
+      // Esperar a que se carguen los estilos antes de imprimir
       setTimeout(() => {
+        printWindow.focus()
         printWindow.print()
-      }, 250)
+        // Cerrar la ventana después de imprimir
+        setTimeout(() => {
+          printWindow.close()
+        }, 100)
+      }, 300)
     } else {
-      // Si la ventana emergente está bloqueada
       handleClearOrder()
       alert("Por favor permite ventanas emergentes para imprimir el voucher")
     }
+  } else {
+    // Mostrar error si no se pudo guardar
+    toast({
+      title: "Error",
+      description: "No se pudo guardar la orden. Intente nuevamente.",
+      variant: "destructive",
+    })
   }
-
+}
   if (initialLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">

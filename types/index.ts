@@ -5,6 +5,7 @@ export interface Product {
   category: string
   created_at?: string
   current_stock:number
+  recipe_id:number
 }
 
 export interface OrderItem {
